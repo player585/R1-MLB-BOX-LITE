@@ -250,6 +250,7 @@ a, button { transition: color var(--transition), background var(--transition), o
 .stat-table td.avg { color: var(--color-sched); font-weight: 600; }
 .stat-table td.era { color: var(--color-sched); font-weight: 600; }
 .stat-table tr:last-child td { border-bottom: none; }
+.stat-table tbody tr.focused td { background: color-mix(in oklch, var(--color-live) 12%, transparent); color: var(--color-text); }
 /* highlight non-zero HR, RBI */
 .stat-table td.hr-val  { color: var(--color-primary); font-weight: 700; }
 .stat-table td.rbi-val { color: var(--color-win); font-weight: 600; }
@@ -372,7 +373,7 @@ a, button { transition: color var(--transition), background var(--transition), o
 
 </main>
 
-<div class="version-watermark">v1.1.1<br>2026-04-08 12:37 PM</div>
+<div class="version-watermark">v1.2.0<br>2026-04-08 12:38 PM</div>
 <footer class="app-footer">
   <span class="footer-text">MLB Stats API · Free</span>
   <div class="countdown-bar-wrap"><div class="countdown-bar" id="countdownBar" style="width:100%"></div></div>
@@ -387,6 +388,7 @@ let state = {
   games: [],
   selectedGamePk: null,
   focusIndex: -1,
+  boxFocusIndex: -1,
   theme: 'dark',
   countdown: REFRESH_INTERVAL,
   countdownTimer: null,
@@ -563,6 +565,7 @@ function renderScores(games) {
 /* ── Box Score ── */
 async function selectGame(pk) {
   state.selectedGamePk = pk;
+  state.boxFocusIndex = 0;
   document.querySelectorAll('.game-card').forEach(c=>c.classList.toggle('selected', parseInt(c.dataset.pk)===pk));
   switchTab('boxscore');
   await loadBoxscore(pk);
@@ -765,22 +768,32 @@ function setFocus(idx) {
   cards[idx].scrollIntoView({ block: 'nearest', behavior: 'auto' });
 }
 
+// Box score row focus helpers
+function getBoxRows() { return Array.from(document.querySelectorAll('#tab-boxscore .stat-table tbody tr')); }
+
+function setBoxFocus(idx) {
+  const rows = getBoxRows();
+  if (!rows.length) return;
+  idx = Math.max(0, Math.min(idx, rows.length - 1));
+  state.boxFocusIndex = idx;
+  rows.forEach((r,i) => r.classList.toggle('focused', i === idx));
+  rows[idx].scrollIntoView({ block: 'nearest', behavior: 'auto' });
+}
+
 // Scroll wheel on Scores tab → move focus between game cards
-// Scroll wheel on Box Score tab → scroll the box score content
+// Scroll wheel on Box Score tab → move focus between player rows
 window.addEventListener('scrollUp', () => {
   if (state.currentTab === 'scores') {
     setFocus(state.focusIndex - 1);
   } else {
-    const el = document.getElementById('mainScroll');
-    el.scrollTop = Math.max(0, el.scrollTop - 60);
+    setBoxFocus(state.boxFocusIndex - 1);
   }
 });
 window.addEventListener('scrollDown', () => {
   if (state.currentTab === 'scores') {
     setFocus(state.focusIndex + 1);
   } else {
-    const el = document.getElementById('mainScroll');
-    el.scrollTop = el.scrollTop + 60;
+    setBoxFocus(state.boxFocusIndex + 1);
   }
 });
 
