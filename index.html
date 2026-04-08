@@ -175,6 +175,7 @@ a, button { transition: color var(--transition), background var(--transition), o
 }
 .game-card:active { transform: scale(0.985); }
 .game-card.selected { border-color: var(--color-primary); box-shadow: 0 0 0 1px var(--color-primary); }
+.game-card.focused { border-color: var(--color-live); box-shadow: 0 0 0 1.5px var(--color-live); }
 
 .game-card-header {
   display: flex; align-items: center; justify-content: space-between;
@@ -383,6 +384,7 @@ const REFRESH_INTERVAL = 30;
 let state = {
   games: [],
   selectedGamePk: null,
+  focusIndex: -1,
   theme: 'dark',
   countdown: REFRESH_INTERVAL,
   countdownTimer: null,
@@ -552,6 +554,8 @@ function renderScores(games) {
   });
   const live = games.filter(g=>g.status?.abstractGameCode==='L').length;
   document.getElementById('statusGames').textContent = `${games.length} games${live>0?` · ${live} LIVE`:''}`;
+  // auto-focus first card for R1 scroll wheel navigation
+  if (sorted.length) setFocus(state.focusIndex >= 0 ? Math.min(state.focusIndex, sorted.length - 1) : 0);
 }
 
 /* ── Box Score ── */
@@ -745,24 +749,59 @@ document.getElementById('refreshBtn').addEventListener('click',()=>{
   if (state.currentTab==='boxscore' && state.selectedGamePk) loadBoxscore(state.selectedGamePk);
 });
 
-/* ── R1 Hardware Events (scroll wheel + PTT side button) ── */
-// Scroll wheel → scroll active panel
-window.addEventListener('scrollUp', ()=>{
-  document.getElementById('mainScroll').scrollBy(0, -60);
+/* ── R1 Hardware: focus-navigation system ── */
+function getGameCards() { return Array.from(document.querySelectorAll('.game-card')); }
+
+function setFocus(idx) {
+  const cards = getGameCards();
+  if (!cards.length) return;
+  // clamp
+  idx = Math.max(0, Math.min(idx, cards.length - 1));
+  state.focusIndex = idx;
+  cards.forEach((c,i) => c.classList.toggle('focused', i === idx));
+  // scroll into view — use block nearest so it doesn't jump wildly
+  cards[idx].scrollIntoView({ block: 'nearest', behavior: 'auto' });
+}
+
+// Scroll wheel on Scores tab → move focus between game cards
+// Scroll wheel on Box Score tab → scroll the box score content
+window.addEventListener('scrollUp', () => {
+  if (state.currentTab === 'scores') {
+    setFocus(state.focusIndex - 1);
+  } else {
+    const el = document.getElementById('mainScroll');
+    el.scrollTop = Math.max(0, el.scrollTop - 60);
+  }
 });
-window.addEventListener('scrollDown', ()=>{
-  document.getElementById('mainScroll').scrollBy(0, 60);
+window.addEventListener('scrollDown', () => {
+  if (state.currentTab === 'scores') {
+    setFocus(state.focusIndex + 1);
+  } else {
+    const el = document.getElementById('mainScroll');
+    el.scrollTop = el.scrollTop + 60;
+  }
 });
 
-// PTT side button → single click refreshes scores
-window.addEventListener('sideClick', ()=>{
+// PTT click → on Scores tab: select focused game → on Box Score tab: refresh
+window.addEventListener('sideClick', () => {
+  if (state.currentTab === 'scores') {
+    const cards = getGameCards();
+    if (cards.length && state.focusIndex >= 0 && state.focusIndex < cards.length) {
+      const pk = parseInt(cards[state.focusIndex].dataset.pk);
+      if (pk) selectGame(pk);
+    }
+  } else {
+    // refresh box score
+    if (state.selectedGamePk) loadBoxscore(state.selectedGamePk);
+  }
+});
+
+// PTT long press → switch tabs (or refresh everything)
+window.addEventListener('longPressStart', () => {
+  switchTab(state.currentTab === 'scores' ? 'boxscore' : 'scores');
+});
+window.addEventListener('longPressEnd', () => {
   loadAll();
-  if (state.currentTab==='boxscore' && state.selectedGamePk) loadBoxscore(state.selectedGamePk);
-});
-
-// PTT long press → switch between Scores / Box Score tabs
-window.addEventListener('longPressStart', ()=>{
-  switchTab(state.currentTab==='scores' ? 'boxscore' : 'scores');
 });
 
 /* ── Keyboard fallbacks for browser testing ── */
